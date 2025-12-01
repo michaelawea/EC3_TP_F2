@@ -91,7 +91,7 @@ architecture Behavioral of main is
 
     -- temp_reader 信号
     signal temp_busy_s      : STD_LOGIC;    -- 温度读取忙标志
-    signal temp_data_s      : STD_LOGIC_VECTOR(15 downto 0); -- 16位温度数据
+    signal temp_data_s      : STD_LOGIC_VECTOR(15 downto 0) := (others => '0'); -- 16位温度数据
 
     -- temp_reader 到 i2c_master 的信号
     signal i2c_ena_s        : STD_LOGIC;    -- I2C使能信号

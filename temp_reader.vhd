@@ -229,7 +229,7 @@ begin
 
                     when st_busy_0_3 =>
                         temp_lsb <= data_rd;  -- 保存LSB
-                        data <= temp_msb & data_rd;  -- 组合输出
+                        data <= data_rd & temp_msb;  -- 组合输出（交换字节序）
 
                     when others =>
                         null;
