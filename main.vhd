@@ -64,17 +64,17 @@ architecture Behavioral of main is
     -- I2C主控制器组件
     component i2c_master is
         Port (
-            clk       : in    STD_LOGIC;
-            reset_n   : in    STD_LOGIC;
-            ena       : in    STD_LOGIC;
-            addr      : in    STD_LOGIC_VECTOR(6 downto 0);
-            rw        : in    STD_LOGIC;
-            data_wr   : in    STD_LOGIC_VECTOR(7 downto 0);
-            busy      : out   STD_LOGIC;
-            data_rd   : out   STD_LOGIC_VECTOR(7 downto 0);
-            ack_error : out   STD_LOGIC;
-            sda       : inout STD_LOGIC;
-            scl       : inout STD_LOGIC
+            clk       : in     STD_LOGIC;
+            reset_n   : in     STD_LOGIC;
+            ena       : in     STD_LOGIC;
+            addr      : in     STD_LOGIC_VECTOR(6 downto 0);
+            rw        : in     STD_LOGIC;
+            data_wr   : in     STD_LOGIC_VECTOR(7 downto 0);
+            busy      : out    STD_LOGIC;
+            data_rd   : out    STD_LOGIC_VECTOR(7 downto 0);
+            ack_error : BUFFER STD_LOGIC;
+            sda       : inout  STD_LOGIC;
+            scl       : inout  STD_LOGIC
         );
     end component;
 
