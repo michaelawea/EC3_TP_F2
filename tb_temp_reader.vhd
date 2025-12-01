@@ -76,25 +76,29 @@ begin
         i2c_busy <= '1';
         wait for 10 * TbPeriod;
         i2c_busy <= '0';
-        wait for 2 * TbPeriod;
+
+        -- Wait for i2c_ena to stay high and i2c_rw to become '1' (transition to read mode)
+        wait until i2c_ena = '1' and i2c_rw = '1';
+        wait until rising_edge(clk);  -- Synchronize with clock
+        wait until rising_edge(clk);  -- Give state machine time to stabilize
 
         -- Read MSB
-        wait until i2c_ena = '1' and i2c_rw = '1';
-        wait for 3 * TbPeriod;
+        wait for 1 * TbPeriod;
         i2c_busy <= '1';
         wait for 10 * TbPeriod;
         data_rd <= TEMP_MSB;
-        wait for 1 * TbPeriod;
         i2c_busy <= '0';
-        wait for 2 * TbPeriod;
+
+        -- Wait for next read request (i2c_ena should stay high)
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
 
         -- Read LSB
-        wait until i2c_ena = '1' and i2c_rw = '1';
-        wait for 3 * TbPeriod;
+        wait for 1 * TbPeriod;
         i2c_busy <= '1';
         wait for 10 * TbPeriod;
         data_rd <= TEMP_LSB;
-        wait for 1 * TbPeriod;
         i2c_busy <= '0';
 
         wait;
