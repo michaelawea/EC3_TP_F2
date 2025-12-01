@@ -33,197 +33,248 @@ LIBRARY ieee;
 USE ieee.std_logic_1164.all;
 USE ieee.std_logic_unsigned.all;
 
+--================================================================================
+-- 实体定义: i2c_master
+-- 功能: 实现一个I2C总线主控制器。
+--================================================================================
 ENTITY i2c_master IS
   PORT(
-    clk       : IN     STD_LOGIC;                    --system clock
-    reset_n   : IN     STD_LOGIC;                    --active low reset
-    ena       : IN     STD_LOGIC;                    --latch in command
-    addr      : IN     STD_LOGIC_VECTOR(6 DOWNTO 0); --address of target slave
-    rw        : IN     STD_LOGIC;                    --'0' is write, '1' is read
-    data_wr   : IN     STD_LOGIC_VECTOR(7 DOWNTO 0); --data to write to slave
-    busy      : OUT    STD_LOGIC;                    --indicates transaction in progress
-    data_rd   : OUT    STD_LOGIC_VECTOR(7 DOWNTO 0); --data read from slave
-    ack_error : BUFFER STD_LOGIC;                    --flag if improper acknowledge from slave
-    sda       : INOUT  STD_LOGIC;                    --serial data output of i2c bus
-    scl       : INOUT  STD_LOGIC);                   --serial clock output of i2c bus
+    clk       : IN     STD_LOGIC;                    -- 系统时钟
+    reset_n   : IN     STD_LOGIC;                    -- 低电平有效异步复位
+    ena       : IN     STD_LOGIC;                    -- 使能信号，高电平有效，用于锁存命令和启动/维持一次I2C传输
+    addr      : IN     STD_LOGIC_VECTOR(6 DOWNTO 0); -- 目标从设备的7位地址
+    rw        : IN     STD_LOGIC;                    -- 传输方向: '0' 表示写, '1' 表示读
+    data_wr   : IN     STD_LOGIC_VECTOR(7 DOWNTO 0); -- 要写入从设备的数据
+    busy      : OUT    STD_LOGIC;                    -- 忙标志，'1'表示I2C传输正在进行中
+    data_rd   : OUT    STD_LOGIC_VECTOR(7 DOWNTO 0); -- 从从设备读取的数据
+    ack_error : BUFFER STD_LOGIC;                    -- 应答错误标志，'1'表示从设备未发送有效的应答信号(ACK)
+    sda       : INOUT  STD_LOGIC;                    -- I2C串行数据线 (双向)
+    scl       : INOUT  STD_LOGIC);                   -- I2C串行时钟线 (双向)
 END i2c_master;
 
 ARCHITECTURE logic OF i2c_master IS
-  --CONSTANT divider  :  INTEGER := (input_clk/bus_clk)/4; --number of clocks in 1/4 cycle of scl
-  TYPE machine IS(ready, start, command, slv_ack1, wr, rd, slv_ack2, mstr_ack, stop); --needed states
-  SIGNAL state         : machine;                        --state machine
-  SIGNAL data_clk      : STD_LOGIC;                      --data clock for sda
-  SIGNAL data_clk_prev : STD_LOGIC;                      --data clock during previous system clock
-  SIGNAL scl_clk       : STD_LOGIC;                      --constantly running internal scl
-  SIGNAL scl_ena       : STD_LOGIC := '0';               --enables internal scl to output
-  SIGNAL sda_int       : STD_LOGIC := '1';               --internal sda
-  SIGNAL sda_ena_n     : STD_LOGIC;                      --enables internal sda to output
-  SIGNAL addr_rw       : STD_LOGIC_VECTOR(7 DOWNTO 0);   --latched in address and read/write
-  SIGNAL data_tx       : STD_LOGIC_VECTOR(7 DOWNTO 0);   --latched in data to write to slave
-  SIGNAL data_rx       : STD_LOGIC_VECTOR(7 DOWNTO 0);   --data received from slave
-  SIGNAL bit_cnt       : INTEGER RANGE 0 TO 7 := 7;      --tracks bit number in transaction
-  SIGNAL stretch       : STD_LOGIC := '0';               --identifies if slave is stretching scl
+  -- I2C总线时钟频率是通过分频系统时钟得到的。这里的注释提供了一个计算分频比的例子。
+  -- CONSTANT divider  :  INTEGER := (input_clk/bus_clk)/4; -- SCL时钟1/4周期内的系统时钟周期数
+  
+  -- 定义状态机的状态
+  TYPE machine IS(ready, start, command, slv_ack1, wr, rd, slv_ack2, mstr_ack, stop); 
+  SIGNAL state         : machine;                        -- 状态机当前状态
+  
+  -- 内部时钟和信号
+  SIGNAL data_clk      : STD_LOGIC;                      -- 数据时钟，用于同步SDA数据的变化
+  SIGNAL data_clk_prev : STD_LOGIC;                      -- 上一个系统时钟周期的数据时钟值
+  SIGNAL scl_clk       : STD_LOGIC;                      -- 内部生成的原始SCL时钟信号
+  SIGNAL scl_ena       : STD_LOGIC := '0';               -- SCL输出使能信号，'1'时允许scl_clk驱动scl线
+  SIGNAL sda_int       : STD_LOGIC := '1';               -- 内部SDA数据信号，用于主设备驱动SDA
+  SIGNAL sda_ena_n     : STD_LOGIC;                      -- SDA输出使能信号（低电平有效），控制SDA线的驱动
+  
+  -- 数据锁存和计数器
+  SIGNAL addr_rw       : STD_LOGIC_VECTOR(7 DOWNTO 0);   -- 锁存的从设备地址和读写位 (addr & rw)
+  SIGNAL data_tx       : STD_LOGIC_VECTOR(7 DOWNTO 0);   -- 锁存的要发送的数据
+  SIGNAL data_rx       : STD_LOGIC_VECTOR(7 DOWNTO 0);   -- 从SDA线上接收的数据
+  SIGNAL bit_cnt       : INTEGER RANGE 0 TO 7 := 7;      -- 位计数器，用于追踪8位数据的传输进度
+  SIGNAL stretch       : STD_LOGIC := '0';               -- 时钟延长标志, '1'表示检测到从设备正在延长SCL时钟
+
 BEGIN
 
-  --generate the timing for the bus clock (scl_clk) and the data clock (data_clk)
+  --================================================================================
+  -- 进程: 时钟生成器
+  -- 功能: 
+  -- 1. 基于系统时钟clk生成内部的SCL时钟(scl_clk)和数据时钟(data_clk)。
+  -- 2. SCL时钟被分成四个相位，以满足I2C时序要求。
+  -- 3. 实现I2C时钟延长(clock stretching)检测。当从设备将SCL拉低时，
+  --    计数器暂停，直到SCL被释放，从而实现时钟延长。
+  --================================================================================
   PROCESS(clk, reset_n)
-    VARIABLE count  :  INTEGER RANGE 0 TO 250; --divider*4;  --timing for clock generation
+    -- 注意: 这里的计数器最大值250是基于特定的系统时钟和I2C总线时钟计算得出的。
+    -- 例如: 系统时钟50MHz, I2C时钟100kHz, divider = (50M/100k)/4 = 125. 计数器范围是0到499.
+    -- 这里固定为250，意味着一个SCL周期包含1000个系统时钟周期。50MHz/1000 = 50kHz SCL.
+    VARIABLE count  :  INTEGER RANGE 0 TO 250; -- 分频计数器
   BEGIN
-    IF(reset_n = '0') THEN                --reset asserted
-      stretch <= '0';
-      count := 0;
+    IF(reset_n = '0') THEN                -- 复位信号有效
+      stretch <= '0';                     -- 清除时钟延长标志
+      count := 0;                         -- 复位计数器
     ELSIF(clk'EVENT AND clk = '1') THEN
-      data_clk_prev <= data_clk;          --store previous value of data clock
-      IF(count = 249) THEN --divider*4-1) THEN        --end of timing cycle
-        count := 0;                       --reset timer
-      ELSIF(stretch = '0') THEN           --clock stretching from slave not detected
-        count := count + 1;               --continue clock generation timing
+      data_clk_prev <= data_clk;          -- 保存上一个数据时钟的值
+      
+      IF(count = 249) THEN -- divider*4-1    -- 一个完整的SCL时钟周期结束
+        count := 0;                       -- 重置计数器
+      ELSIF(stretch = '0') THEN           -- 如果没有检测到时钟延长
+        count := count + 1;               -- 计数器加1
       END IF;
+      
+      -- 根据计数器的值生成scl_clk和data_clk的波形
       CASE count IS
-        WHEN 0 TO 62 => --divider-1 =>            --first 1/4 cycle of clocking
+        WHEN 0 TO 62 => -- divider-1        -- 第1个1/4周期
           scl_clk <= '0';
           data_clk <= '0';
-        WHEN 63 TO 124 => --divider*2-1 =>    --second 1/4 cycle of clocking
+        WHEN 63 TO 124 => -- divider*2-1    -- 第2个1/4周期
           scl_clk <= '0';
-          data_clk <= '1';
-        WHEN 125 TO 186 => --divider*3-1 =>  --third 1/4 cycle of clocking
-          scl_clk <= '1';                 --release scl
-          IF(scl = '0') THEN              --detect if slave is stretching clock
-            stretch <= '1';
+          data_clk <= '1'; -- data_clk在SCL低电平中间产生上升沿
+        WHEN 125 TO 186 => -- divider*3-1  -- 第3个1/4周期
+          scl_clk <= '1';                 -- 释放SCL（拉高）
+          IF(scl = '0') THEN              -- 检测SCL线是否被从设备拉低
+            stretch <= '1';               -- 如果是，则设置时钟延长标志
           ELSE
-            stretch <= '0';
+            stretch <= '0';               -- 否则，清除标志
           END IF;
           data_clk <= '1';
-        WHEN OTHERS =>                    --last 1/4 cycle of clocking
+        WHEN OTHERS =>                    -- 第4个1/4周期
           scl_clk <= '1';
-          data_clk <= '0';
+          data_clk <= '0'; -- data_clk在SCL高电平中间产生下降沿
       END CASE;
     END IF;
   END PROCESS;
 
-  --state machine and writing to sda during scl low (data_clk rising edge)
+  --================================================================================
+  -- 进程: I2C主状态机
+  -- 功能: 
+  -- 1. 控制I2C传输的整个流程，包括起始、命令、读/写、应答和停止。
+  -- 2. 在data_clk的上升沿改变SDA上的数据 (sda_int)。
+  -- 3. 在data_clk的下降沿读取SDA上的数据。
+  --================================================================================
   PROCESS(clk, reset_n)
   BEGIN
-    IF(reset_n = '0') THEN                 --reset asserted
-      state <= ready;                      --return to initial state
-      busy <= '1';                         --indicate not available
-      scl_ena <= '0';                      --sets scl high impedance
-      sda_int <= '1';                      --sets sda high impedance
-      ack_error <= '0';                    --clear acknowledge error flag
-      bit_cnt <= 7;                        --restarts data bit counter
-      data_rd <= "00000000";               --clear data read port
+    IF(reset_n = '0') THEN                 -- 复位信号有效
+      state <= ready;                      -- 回到就绪状态
+      busy <= '1';                         -- 置忙标志（复位期间不可用）
+      scl_ena <= '0';                      -- SCL输出高阻态
+      sda_int <= '1';                      -- SDA内部信号高电平（准备释放总线）
+      ack_error <= '0';                    -- 清除应答错误标志
+      bit_cnt <= 7;                        -- 复位位计数器
+      data_rd <= "00000000";               -- 清除读取数据寄存器
     ELSIF(clk'EVENT AND clk = '1') THEN
-      IF(data_clk = '1' AND data_clk_prev = '0') THEN  --data clock rising edge
+      -- --------------------------------------------------------------------------
+      -- 数据发送逻辑 (data_clk 上升沿)
+      -- --------------------------------------------------------------------------
+      IF(data_clk = '1' AND data_clk_prev = '0') THEN  
         CASE state IS
-          WHEN ready =>                      --idle state
-            IF(ena = '1') THEN               --transaction requested
-              busy <= '1';                   --flag busy
-              addr_rw <= addr & rw;          --collect requested slave address and command
-              data_tx <= data_wr;            --collect requested data to write
-              state <= start;                --go to start bit
-            ELSE                             --remain idle
-              busy <= '0';                   --unflag busy
-              state <= ready;                --remain idle
+          WHEN ready =>                      -- 空闲状态
+            IF(ena = '1') THEN               -- 如果收到使能信号，开始一次新的传输
+              busy <= '1';                   -- 设置忙标志
+              addr_rw <= addr & rw;          -- 锁存地址和读写位
+              data_tx <= data_wr;            -- 锁存要写入的数据
+              state <= start;                -- 进入起始状态
+            ELSE                             -- 否则保持空闲
+              busy <= '0';                   -- 清除忙标志
+              state <= ready;                -- 保持就绪状态
             END IF;
-          WHEN start =>                      --start bit of transaction
-            busy <= '1';                     --resume busy if continuous mode
-            sda_int <= addr_rw(bit_cnt);     --set first address bit to bus
-            state <= command;                --go to command
-          WHEN command =>                    --address and command byte of transaction
-            IF(bit_cnt = 0) THEN             --command transmit finished
-              sda_int <= '1';                --release sda for slave acknowledge
-              bit_cnt <= 7;                  --reset bit counter for "byte" states
-              state <= slv_ack1;             --go to slave acknowledge (command)
-            ELSE                             --next clock cycle of command state
-              bit_cnt <= bit_cnt - 1;        --keep track of transaction bits
-              sda_int <= addr_rw(bit_cnt-1); --write address/command bit to bus
-              state <= command;              --continue with command
+            
+          WHEN start =>                      -- 产生起始条件后，发送地址/命令字节的第一个bit
+            busy <= '1';                     -- 在连续传输模式下，保持忙状态
+            sda_int <= addr_rw(bit_cnt);     -- 发送地址的最高位 (MSB)
+            state <= command;                -- 进入命令发送状态
+            
+          WHEN command =>                    -- 发送地址和读写命令字节
+            IF(bit_cnt = 0) THEN             -- 8位地址和命令已发送完毕
+              sda_int <= '1';                -- 释放SDA，准备接收从设备的ACK
+              bit_cnt <= 7;                  -- 重置位计数器，为下一个字节做准备
+              state <= slv_ack1;             -- 进入等待从设备ACK的状态
+            ELSE                             -- 继续发送下一个bit
+              bit_cnt <= bit_cnt - 1;        -- 位计数器减1
+              sda_int <= addr_rw(bit_cnt-1); -- 发送下一个bit
+              state <= command;              -- 保持在命令发送状态
             END IF;
-          WHEN slv_ack1 =>                   --slave acknowledge bit (command)
-            IF(addr_rw(0) = '0') THEN        --write command
-              sda_int <= data_tx(bit_cnt);   --write first bit of data
-              state <= wr;                   --go to write byte
-            ELSE                             --read command
-              sda_int <= '1';                --release sda from incoming data
-              state <= rd;                   --go to read byte
+            
+          WHEN slv_ack1 =>                   -- 等待从设备对地址/命令的应答
+            IF(addr_rw(0) = '0') THEN        -- 如果是写命令 ('0')
+              sda_int <= data_tx(bit_cnt);   -- 发送写数据的第一个bit
+              state <= wr;                   -- 进入写数据状态
+            ELSE                             -- 如果是读命令 ('1')
+              sda_int <= '1';                -- 释放SDA，准备接收数据
+              state <= rd;                   -- 进入读数据状态
             END IF;
-          WHEN wr =>                         --write byte of transaction
-            busy <= '1';                     --resume busy if continuous mode
-            IF(bit_cnt = 0) THEN             --write byte transmit finished
-              sda_int <= '1';                --release sda for slave acknowledge
-              bit_cnt <= 7;                  --reset bit counter for "byte" states
-              state <= slv_ack2;             --go to slave acknowledge (write)
-            ELSE                             --next clock cycle of write state
-              bit_cnt <= bit_cnt - 1;        --keep track of transaction bits
-              sda_int <= data_tx(bit_cnt-1); --write next bit to bus
-              state <= wr;                   --continue writing
+            
+          WHEN wr =>                         -- 写数据字节状态
+            busy <= '1';                     -- 在连续传输模式下，保持忙状态
+            IF(bit_cnt = 0) THEN             -- 8位数据已发送完毕
+              sda_int <= '1';                -- 释放SDA，准备接收从设备的ACK
+              bit_cnt <= 7;                  -- 重置位计数器
+              state <= slv_ack2;             -- 进入等待从设备ACK的状态
+            ELSE                             -- 继续发送下一个bit
+              bit_cnt <= bit_cnt - 1;        -- 位计数器减1
+              sda_int <= data_tx(bit_cnt-1); -- 发送下一个bit
+              state <= wr;                   -- 保持在写数据状态
             END IF;
-          WHEN rd =>                         --read byte of transaction
-            busy <= '1';                     --resume busy if continuous mode
-            IF(bit_cnt = 0) THEN             --read byte receive finished
-              IF(ena = '1' AND addr_rw = addr & rw) THEN  --continuing with another read at same address
-                sda_int <= '0';              --acknowledge the byte has been received
-              ELSE                           --stopping or continuing with a write
-                sda_int <= '1';              --send a no-acknowledge (before stop or repeated start)
+            
+          WHEN rd =>                         -- 读数据字节状态
+            busy <= '1';                     -- 在连续传输模式下，保持忙状态
+            IF(bit_cnt = 0) THEN             -- 8位数据已接收完毕
+              IF(ena = '1' AND addr_rw = addr & rw) THEN  -- 如果要连续读同一地址
+                sda_int <= '0';              -- 主设备发送ACK (拉低SDA)
+              ELSE                           -- 如果要停止或切换到写操作
+                sda_int <= '1';              -- 主设备发送NACK (不拉低SDA)
               END IF;
-              bit_cnt <= 7;                  --reset bit counter for "byte" states
-              data_rd <= data_rx;            --output received data
-              state <= mstr_ack;             --go to master acknowledge
-            ELSE                             --next clock cycle of read state
-              bit_cnt <= bit_cnt - 1;        --keep track of transaction bits
-              state <= rd;                   --continue reading
+              bit_cnt <= 7;                  -- 重置位计数器
+              data_rd <= data_rx;            -- 输出接收到的数据
+              state <= mstr_ack;             -- 进入主设备应答状态
+            ELSE                             -- 继续接收下一个bit
+              bit_cnt <= bit_cnt - 1;        -- 位计数器减1
+              state <= rd;                   -- 保持在读数据状态
             END IF;
-          WHEN slv_ack2 =>                   --slave acknowledge bit (write)
-            IF(ena = '1') THEN               --continue transaction
-              busy <= '0';                   --continue is accepted
-              addr_rw <= addr & rw;          --collect requested slave address and command
-              data_tx <= data_wr;            --collect requested data to write
-              IF(addr_rw = addr & rw) THEN   --continue transaction with another write
-                sda_int <= data_wr(bit_cnt); --write first bit of data
-                state <= wr;                 --go to write byte
-              ELSE                           --continue transaction with a read or new slave
-                state <= start;              --go to repeated start
+            
+          WHEN slv_ack2 =>                   -- 等待从设备对写数据的应答
+            IF(ena = '1') THEN               -- 如果要继续传输
+              busy <= '0';                   -- 短暂解除忙状态，表示可以接收新命令
+              addr_rw <= addr & rw;          -- 锁存新的地址和命令
+              data_tx <= data_wr;            -- 锁存新的写数据
+              IF(addr_rw = addr & rw) THEN   -- 如果是连续写
+                sda_int <= data_wr(bit_cnt); -- 发送新数据的第一个bit
+                state <= wr;                 -- 回到写数据状态
+              ELSE                           -- 如果是切换到读操作或新的从设备
+                state <= start;              -- 产生重复起始条件
               END IF;
-            ELSE                             --complete transaction
-              state <= stop;                 --go to stop bit
+            ELSE                             -- 否则，结束传输
+              state <= stop;                 -- 进入停止状态
             END IF;
-          WHEN mstr_ack =>                   --master acknowledge bit after a read
-            IF(ena = '1') THEN               --continue transaction
-              busy <= '0';                   --continue is accepted and data received is available on bus
-              addr_rw <= addr & rw;          --collect requested slave address and command
-              data_tx <= data_wr;            --collect requested data to write
-              IF(addr_rw = addr & rw) THEN   --continue transaction with another read
-                sda_int <= '1';              --release sda from incoming data
-                state <= rd;                 --go to read byte
-              ELSE                           --continue transaction with a write or new slave
-                state <= start;              --repeated start
+            
+          WHEN mstr_ack =>                   -- 主设备发送应答后
+            IF(ena = '1') THEN               -- 如果要继续传输
+              busy <= '0';                   -- 短暂解除忙状态，表示接收到的数据已可用
+              addr_rw <= addr & rw;          -- 锁存新的地址和命令
+              data_tx <= data_wr;            -- 锁存新的写数据
+              IF(addr_rw = addr & rw) THEN   -- 如果是连续读
+                sda_int <= '1';              -- 释放SDA，准备接收数据
+                state <= rd;                 -- 回到读数据状态
+              ELSE                           -- 如果是切换到写操作或新的从设备
+                state <= start;              -- 产生重复起始条件
               END IF;    
-            ELSE                             --complete transaction
-              state <= stop;                 --go to stop bit
+            ELSE                             -- 否则，结束传输
+              state <= stop;                 -- 进入停止状态
             END IF;
-          WHEN stop =>                       --stop bit of transaction
-            busy <= '0';                     --unflag busy
-            state <= ready;                  --go to idle state
+            
+          WHEN stop =>                       -- 停止状态
+            busy <= '0';                     -- 解除忙状态
+            state <= ready;                  -- 回到就绪状态
         END CASE;    
-      ELSIF(data_clk = '0' AND data_clk_prev = '1') THEN  --data clock falling edge
+        
+      -- --------------------------------------------------------------------------
+      -- 数据接收逻辑 (data_clk 下降沿)
+      -- --------------------------------------------------------------------------
+      ELSIF(data_clk = '0' AND data_clk_prev = '1') THEN  
         CASE state IS
           WHEN start =>                  
-            IF(scl_ena = '0') THEN                  --starting new transaction
-              scl_ena <= '1';                       --enable scl output
-              ack_error <= '0';                     --reset acknowledge error output
+            IF(scl_ena = '0') THEN                  -- 如果是新的传输（非重复起始）
+              scl_ena <= '1';                       -- 使能SCL输出
+              ack_error <= '0';                     -- 清除应答错误标志
             END IF;
-          WHEN slv_ack1 =>                          --receiving slave acknowledge (command)
-            IF(sda /= '0' OR ack_error = '1') THEN  --no-acknowledge or previous no-acknowledge
-              ack_error <= '1';                     --set error output if no-acknowledge
+            
+          WHEN slv_ack1 =>                          -- 接收从设备对地址的应答
+            IF(sda /= '0' OR ack_error = '1') THEN  -- 如果SDA不是低电平(NACK)，或之前已有错误
+              ack_error <= '1';                     -- 设置错误标志
             END IF;
-          WHEN rd =>                                --receiving slave data
-            data_rx(bit_cnt) <= sda;                --receive current slave data bit
-          WHEN slv_ack2 =>                          --receiving slave acknowledge (write)
-            IF(sda /= '0' OR ack_error = '1') THEN  --no-acknowledge or previous no-acknowledge
-              ack_error <= '1';                     --set error output if no-acknowledge
+            
+          WHEN rd =>                                -- 接收从设备数据
+            data_rx(bit_cnt) <= sda;                -- 在SCL高电平期间读取SDA上的数据位
+            
+          WHEN slv_ack2 =>                          -- 接收从设备对写数据的应答
+            IF(sda /= '0' OR ack_error = '1') THEN  -- 如果SDA不是低电平(NACK)，或之前已有错误
+              ack_error <= '1';                     -- 设置错误标志
             END IF;
+            
           WHEN stop =>
-            scl_ena <= '0';                         --disable scl
+            scl_ena <= '0';                         -- 禁用SCL输出，使其变为高阻态
+            
           WHEN OTHERS =>
             NULL;
         END CASE;
@@ -231,14 +282,24 @@ BEGIN
     END IF;
   END PROCESS;  
 
-  --set sda output
+  --================================================================================
+  -- SDA 输出逻辑
+  -- 功能: 根据当前状态控制SDA线的行为
+  -- 1. 在start状态，SDA在SCL高电平时由高变低，产生起始条件。
+  -- 2. 在stop状态，SDA在SCL高电平时由低变高，产生停止条件。
+  -- 3. 在其他状态，SDA由内部信号sda_int驱动。
+  --================================================================================
   WITH state SELECT
-    sda_ena_n <= data_clk_prev WHEN start,     --generate start condition
-                 NOT data_clk_prev WHEN stop,  --generate stop condition
-                 sda_int WHEN OTHERS;          --set to internal sda signal    
+    sda_ena_n <= data_clk_prev WHEN start,     -- 起始: scl_clk为高(data_clk_prev=1)时, sda_ena_n=1->0 (SDA拉低)
+                 NOT data_clk_prev WHEN stop,  -- 停止: scl_clk为高(data_clk_prev=1)时, sda_ena_n=0->1 (SDA释放)
+                 sda_int WHEN OTHERS;          -- 其他: 由内部逻辑决定SDA
       
-  --set scl and sda outputs
-  scl <= '0' WHEN (scl_ena = '1' AND scl_clk = '0') ELSE 'Z';
-  sda <= '0' WHEN sda_ena_n = '0' ELSE 'Z';
+  --================================================================================
+  -- SCL 和 SDA 三态门输出
+  -- 功能: 将内部SCL和SDA信号连接到物理引脚
+  -- 'Z' 表示高阻态，'0' 表示驱动为低电平
+  --================================================================================
+  scl <= '0' WHEN (scl_ena = '1' AND scl_clk = '0') ELSE 'Z'; -- 当scl_ena有效且内部时钟为低时，将SCL拉低；否则高阻
+  sda <= '0' WHEN sda_ena_n = '0' ELSE 'Z'; -- 当sda_ena_n为低时，将SDA拉低；否则高阻
   
 END logic;
