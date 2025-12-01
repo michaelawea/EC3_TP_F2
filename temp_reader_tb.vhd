@@ -1,162 +1,179 @@
-----------------------------------------------------------------------------------
 -- Testbench for temp_reader
--- 测试温度读取模块
-----------------------------------------------------------------------------------
+-- Modified from auto-generated template
 
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
 
-entity temp_reader_tb is
-end temp_reader_tb;
+entity tb_temp_reader is
+end tb_temp_reader;
 
-architecture Behavioral of temp_reader_tb is
+architecture tb of tb_temp_reader is
 
-    -- 被测试模块的组件声明
-    component temp_reader is
-        Port (
-            clk         : in  STD_LOGIC;
-            rst         : in  STD_LOGIC;
-            trig        : in  STD_LOGIC;
-            data_rd     : in  STD_LOGIC_VECTOR (7 downto 0);
-            i2c_busy    : in  STD_LOGIC;
-            i2c_ack     : in  STD_LOGIC;
-            busy        : out STD_LOGIC;
-            data        : out STD_LOGIC_VECTOR (15 downto 0);
-            i2c_ena     : out STD_LOGIC;
-            i2c_rw      : out STD_LOGIC;
-            i2c_data_wr : out STD_LOGIC_VECTOR (7 downto 0);
-            i2c_addr    : out STD_LOGIC_VECTOR (6 downto 0)
-        );
+    component temp_reader
+        port (clk         : in std_logic;
+              rst         : in std_logic;
+              trig        : in std_logic;
+              data_rd     : in std_logic_vector (7 downto 0);
+              i2c_busy    : in std_logic;
+              i2c_ack     : in std_logic;
+              busy        : out std_logic;
+              data        : out std_logic_vector (15 downto 0);
+              i2c_ena     : out std_logic;
+              i2c_rw      : out std_logic;
+              i2c_data_wr : out std_logic_vector (7 downto 0);
+              i2c_addr    : out std_logic_vector (6 downto 0));
     end component;
 
-    -- 时钟周期
-    constant CLK_PERIOD : time := 10 ns;  -- 100 MHz
+    signal clk         : std_logic;
+    signal rst         : std_logic;
+    signal trig        : std_logic;
+    signal data_rd     : std_logic_vector (7 downto 0);
+    signal i2c_busy    : std_logic;
+    signal i2c_ack     : std_logic;
+    signal busy        : std_logic;
+    signal data        : std_logic_vector (15 downto 0);
+    signal i2c_ena     : std_logic;
+    signal i2c_rw      : std_logic;
+    signal i2c_data_wr : std_logic_vector (7 downto 0);
+    signal i2c_addr    : std_logic_vector (6 downto 0);
 
-    -- 测试信号
-    signal clk         : STD_LOGIC := '0';
-    signal rst         : STD_LOGIC := '0';
-    signal trig        : STD_LOGIC := '0';
-    signal data_rd     : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
-    signal i2c_busy    : STD_LOGIC := '0';
-    signal i2c_ack     : STD_LOGIC := '0';
-    signal busy        : STD_LOGIC;
-    signal data        : STD_LOGIC_VECTOR(15 downto 0);
-    signal i2c_ena     : STD_LOGIC;
-    signal i2c_rw      : STD_LOGIC;
-    signal i2c_data_wr : STD_LOGIC_VECTOR(7 downto 0);
-    signal i2c_addr    : STD_LOGIC_VECTOR(6 downto 0);
+    constant TbPeriod : time := 10 ns; -- 100MHz clock
+    signal TbClock : std_logic := '0';
+    signal TbSimEnded : std_logic := '0';
 
-    -- 测试数据 (25.1°C = 0x0C88)
-    constant TEMP_MSB  : STD_LOGIC_VECTOR(7 downto 0) := "00001100";  -- 0x0C
-    constant TEMP_LSB  : STD_LOGIC_VECTOR(7 downto 0) := "10001000";  -- 0x88
+    -- Test data: 25.1°C = 0x0C88
+    constant TEMP_MSB : std_logic_vector(7 downto 0) := "00001100"; -- 0x0C
+    constant TEMP_LSB : std_logic_vector(7 downto 0) := "10001000"; -- 0x88
 
 begin
 
-    -- 实例化被测试模块
-    UUT: temp_reader
-        port map (
-            clk         => clk,
-            rst         => rst,
-            trig        => trig,
-            data_rd     => data_rd,
-            i2c_busy    => i2c_busy,
-            i2c_ack     => i2c_ack,
-            busy        => busy,
-            data        => data,
-            i2c_ena     => i2c_ena,
-            i2c_rw      => i2c_rw,
-            i2c_data_wr => i2c_data_wr,
-            i2c_addr    => i2c_addr
-        );
+    dut : temp_reader
+    port map (clk         => clk,
+              rst         => rst,
+              trig        => trig,
+              data_rd     => data_rd,
+              i2c_busy    => i2c_busy,
+              i2c_ack     => i2c_ack,
+              busy        => busy,
+              data        => data,
+              i2c_ena     => i2c_ena,
+              i2c_rw      => i2c_rw,
+              i2c_data_wr => i2c_data_wr,
+              i2c_addr    => i2c_addr);
 
-    -- 时钟生成进程
-    CLK_PROCESS: process
-    begin
-        clk <= '0';
-        wait for CLK_PERIOD/2;
-        clk <= '1';
-        wait for CLK_PERIOD/2;
-    end process;
+    -- Clock generation
+    TbClock <= not TbClock after TbPeriod/2 when TbSimEnded /= '1' else '0';
+    clk <= TbClock;
 
-    -- 模拟I2C Master行为的进程
-    I2C_MASTER_SIM: process
+    -- I2C Master behavior simulation
+    i2c_master_sim : process
     begin
         i2c_busy <= '0';
         data_rd <= (others => '0');
 
-        wait until i2c_ena = '1' and i2c_rw = '0';  -- 等待写寄存器地址
-        wait for 50 ns;
+        -- Wait for first i2c_ena (write register address)
+        wait until i2c_ena = '1' and i2c_rw = '0';
+        wait for 3 * TbPeriod;
         i2c_busy <= '1';
-        wait for 100 ns;
+        wait for 10 * TbPeriod;
         i2c_busy <= '0';
+        wait for 2 * TbPeriod;
 
-        wait until i2c_ena = '1' and i2c_rw = '1';  -- 等待读MSB
-        wait for 50 ns;
+        -- Wait for second i2c_ena (read MSB)
+        wait until i2c_ena = '1' and i2c_rw = '1';
+        wait for 3 * TbPeriod;
         i2c_busy <= '1';
-        wait for 100 ns;
-        data_rd <= TEMP_MSB;  -- 提供MSB数据
+        wait for 10 * TbPeriod;
+        data_rd <= TEMP_MSB;  -- Provide MSB data
+        wait for 1 * TbPeriod;
         i2c_busy <= '0';
-        wait for 10 ns;
+        wait for 2 * TbPeriod;
 
-        wait until i2c_ena = '1' and i2c_rw = '1';  -- 等待读LSB
-        wait for 50 ns;
+        -- Wait for third i2c_ena (read LSB)
+        wait until i2c_ena = '1' and i2c_rw = '1';
+        wait for 3 * TbPeriod;
         i2c_busy <= '1';
-        wait for 100 ns;
-        data_rd <= TEMP_LSB;  -- 提供LSB数据
+        wait for 10 * TbPeriod;
+        data_rd <= TEMP_LSB;  -- Provide LSB data
+        wait for 1 * TbPeriod;
         i2c_busy <= '0';
 
         wait;
     end process;
 
-    -- 测试激励进程
-    STIMULUS: process
+    -- Stimulus process
+    stimuli : process
     begin
-        -- 初始复位
-        rst <= '1';
+        -- Initialization
         trig <= '0';
+        i2c_ack <= '0';
+
+        -- Reset generation
+        rst <= '1';
         wait for 100 ns;
         rst <= '0';
-        wait for 50 ns;
-
-        -- 发送触发信号
-        report "Starting temperature read...";
-        trig <= '1';
-        wait for CLK_PERIOD;
-        trig <= '0';
-
-        -- 等待读取完成
-        wait until busy = '0';
         wait for 100 ns;
 
-        -- 检查结果
-        report "Temperature read complete!";
-        report "Data = 0x" &
-               integer'image(to_integer(unsigned(data(15 downto 12)))) &
-               integer'image(to_integer(unsigned(data(11 downto 8)))) &
-               integer'image(to_integer(unsigned(data(7 downto 4)))) &
-               integer'image(to_integer(unsigned(data(3 downto 0))));
+        -- Send trigger to start temperature reading
+        report "=== Starting temperature read ===" severity note;
+        trig <= '1';
+        wait for TbPeriod;
+        trig <= '0';
 
+        -- Wait for busy to go high
+        wait until busy = '1';
+        report "Temperature reader is busy" severity note;
+
+        -- Wait for operation to complete
+        wait until busy = '0';
+        wait for 50 ns;
+
+        report "=== Temperature read complete ===" severity note;
+        report "Output data = " &
+               integer'image(to_integer(unsigned(data(15 downto 8)))) &
+               " (MSB), " &
+               integer'image(to_integer(unsigned(data(7 downto 0)))) &
+               " (LSB)" severity note;
+
+        -- Verify result
         if data = (TEMP_MSB & TEMP_LSB) then
-            report "TEST PASSED: Data matches expected value 0x0C88 (25.1C)" severity note;
+            report "*** TEST PASSED: Data = 0x0C88 (25.1C) ***" severity note;
         else
-            report "TEST FAILED: Data mismatch!" severity error;
+            report "*** TEST FAILED: Data mismatch! ***" severity error;
         end if;
 
         wait for 200 ns;
 
-        -- 第二次读取测试
-        report "Starting second temperature read...";
+        -- Second read test
+        report "=== Starting second temperature read ===" severity note;
         trig <= '1';
-        wait for CLK_PERIOD;
+        wait for TbPeriod;
         trig <= '0';
 
+        wait until busy = '1';
         wait until busy = '0';
+        wait for 50 ns;
+
+        report "=== Second read complete ===" severity note;
+        report "Output data = " &
+               integer'image(to_integer(unsigned(data(15 downto 8)))) &
+               " (MSB), " &
+               integer'image(to_integer(unsigned(data(7 downto 0)))) &
+               " (LSB)" severity note;
+
         wait for 100 ns;
 
-        report "Second read complete!";
-        report "Simulation finished.";
+        report "=== SIMULATION FINISHED ===" severity note;
 
+        -- Stop the clock and terminate simulation
+        TbSimEnded <= '1';
         wait;
     end process;
 
-end Behavioral;
+end tb;
+
+-- Configuration block
+configuration cfg_tb_temp_reader of tb_temp_reader is
+    for tb
+    end for;
+end cfg_tb_temp_reader;
