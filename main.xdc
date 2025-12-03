@@ -43,13 +43,42 @@ set_property -dict { PACKAGE_PIN V11   IOSTANDARD LVCMOS33 } [get_ports { LED[15
 ## ============================================================================
 ## JA PMOD 端口 [1:0] - 用于调试I2C信号
 ## ============================================================================
-set_property -dict { PACKAGE_PIN C17   IOSTANDARD LVCMOS33 } [get_ports { JA[0] }];  # SCL调试输出
-set_property -dict { PACKAGE_PIN D18   IOSTANDARD LVCMOS33 } [get_ports { JA[1] }];  # SDA调试输出
+set_property -dict { PACKAGE_PIN C17   IOSTANDARD LVCMOS33 } [get_ports { JA[0] }];
+set_property -dict { PACKAGE_PIN D18   IOSTANDARD LVCMOS33 } [get_ports { JA[1] }];
+
+## ============================================================================
+## 7段数码管 - 段选信号 (低电平点亮，共阳极)
+## seg[6:0] = {CG, CF, CE, CD, CC, CB, CA}
+## ============================================================================
+set_property -dict { PACKAGE_PIN T10   IOSTANDARD LVCMOS33 } [get_ports { seg[0] }];  # CA
+set_property -dict { PACKAGE_PIN R10   IOSTANDARD LVCMOS33 } [get_ports { seg[1] }];  # CB
+set_property -dict { PACKAGE_PIN K16   IOSTANDARD LVCMOS33 } [get_ports { seg[2] }];  # CC
+set_property -dict { PACKAGE_PIN K13   IOSTANDARD LVCMOS33 } [get_ports { seg[3] }];  # CD
+set_property -dict { PACKAGE_PIN P15   IOSTANDARD LVCMOS33 } [get_ports { seg[4] }];  # CE
+set_property -dict { PACKAGE_PIN T11   IOSTANDARD LVCMOS33 } [get_ports { seg[5] }];  # CF
+set_property -dict { PACKAGE_PIN L18   IOSTANDARD LVCMOS33 } [get_ports { seg[6] }];  # CG
+
+## ============================================================================
+## 7段数码管 - 小数点 (低电平点亮)
+## ============================================================================
+set_property -dict { PACKAGE_PIN H15   IOSTANDARD LVCMOS33 } [get_ports { dp }];
+
+## ============================================================================
+## 7段数码管 - 阳极选择信号 (低电平选中)
+## AN[7:0] 从左到右对应 AN7-AN0
+## ============================================================================
+set_property -dict { PACKAGE_PIN J17   IOSTANDARD LVCMOS33 } [get_ports { an[0] }];  # AN0 (最右)
+set_property -dict { PACKAGE_PIN J18   IOSTANDARD LVCMOS33 } [get_ports { an[1] }];  # AN1
+set_property -dict { PACKAGE_PIN T9    IOSTANDARD LVCMOS33 } [get_ports { an[2] }];  # AN2
+set_property -dict { PACKAGE_PIN J14   IOSTANDARD LVCMOS33 } [get_ports { an[3] }];  # AN3
+set_property -dict { PACKAGE_PIN P14   IOSTANDARD LVCMOS33 } [get_ports { an[4] }];  # AN4
+set_property -dict { PACKAGE_PIN T14   IOSTANDARD LVCMOS33 } [get_ports { an[5] }];  # AN5
+set_property -dict { PACKAGE_PIN K2    IOSTANDARD LVCMOS33 } [get_ports { an[6] }];  # AN6
+set_property -dict { PACKAGE_PIN U13   IOSTANDARD LVCMOS33 } [get_ports { an[7] }];  # AN7 (最左)
 
 ## ============================================================================
 ## 配置选项
 ## ============================================================================
-## 禁用未使用引脚的上拉/下拉
 set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4 [current_design];
 set_property CONFIG_MODE SPIx4 [current_design];
 set_property BITSTREAM.CONFIG.CONFIGRATE 33 [current_design];
