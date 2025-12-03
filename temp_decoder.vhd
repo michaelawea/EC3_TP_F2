@@ -50,9 +50,9 @@ architecture Behavioral of temp_decoder is
     -- 内部信号
     -- ========================================================================
     
-    -- 温度整数部分（9位：D12-D4，范围0-127°C正温度）
-    -- 从16位数据中提取：bits 15-7 对应 D12-D4
-    signal temp_integer : STD_LOGIC_VECTOR(8 downto 0);
+    -- 温度整数部分（8位：D11-D4，范围0-127°C正温度）
+    -- 从16位数据中提取：bits 14-7 对应 D11-D4
+    signal temp_integer : STD_LOGIC_VECTOR(7 downto 0);
     
     -- 温度小数部分（4位：D3-D0，用于计算十分之一度）
     -- 从16位数据中提取：bits 6-3 对应 D3-D0
@@ -76,15 +76,15 @@ begin
     -- ========================================================================
     -- 提取温度数据各部分
     -- ========================================================================
-    -- 整数部分：D12-D4 = temp_data(15 downto 7)
-    -- 注意：这里我们取绝对值用于显示，对于正温度直接使用
-    temp_integer <= temp_data(15 downto 7);
+    -- 整数部分：D11-D4 = temp_data(14 downto 7)
+    -- D12是符号位，不参与整数计算
+    temp_integer <= temp_data(14 downto 7);
     
     -- 小数部分：D3-D0 = temp_data(6 downto 3)
     temp_fraction <= temp_data(6 downto 3);
     
     -- 准备 binary_bcd 的输入（16位，高位补0）
-    binary_in_s <= "0000000" & temp_integer;
+    binary_in_s <= "00000000" & temp_integer;
 
     -- ========================================================================
     -- 实例化 binary_bcd 转换器（转换整数部分）
