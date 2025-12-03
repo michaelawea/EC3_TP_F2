@@ -61,8 +61,12 @@ architecture Behavioral of temp_reader is
     constant TEMP_REG_ADDR  : STD_LOGIC_VECTOR(7 downto 0) := "00000000";  -- 温度寄存器地址
 
     -- 内部寄存器
-    signal temp_msb : STD_LOGIC_VECTOR(7 downto 0);
-    signal temp_lsb : STD_LOGIC_VECTOR(7 downto 0);
+    signal temp_msb : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
+    signal temp_lsb : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
+    
+    -- 用于检测 busy 下降沿
+    signal i2c_busy_prev : STD_LOGIC := '0';
+    signal busy_falling  : STD_LOGIC;
 
 begin
 
@@ -213,7 +217,7 @@ begin
     end process;
 
     -- ========================================================================
-    -- 进程4: 数据寄存器
+    -- 进程4: 数据寄存器 - 在 busy 下降沿捕获数据
     -- ========================================================================
     DATA_REG: process(clk)
     begin
@@ -222,18 +226,27 @@ begin
                 temp_msb <= (others => '0');
                 temp_lsb <= (others => '0');
                 data <= (others => '0');
+                i2c_busy_prev <= '0';
             else
-                case state is
-                    when st_busy_0_2 =>
-                        temp_msb <= data_rd;  -- 保存MSB
-
-                    when st_busy_0_3 =>
-                        temp_lsb <= data_rd;  -- 保存LSB
-                        data <= data_rd & temp_msb;  -- 组合输出（交换字节序）
-
-                    when others =>
-                        null;
-                end case;
+                -- 保存上一个时钟周期的 busy 状态
+                i2c_busy_prev <= i2c_busy;
+                
+                -- 检测 busy 下降沿（1->0）并根据当前状态捕获数据
+                if i2c_busy_prev = '1' and i2c_busy = '0' then
+                    case state is
+                        when st_busy_2 =>
+                            -- 第一次读操作完成，捕获 MSB
+                            temp_msb <= data_rd;
+                            
+                        when st_busy_3 =>
+                            -- 第二次读操作完成，捕获 LSB 并组合输出
+                            temp_lsb <= data_rd;
+                            data <= temp_msb & data_rd;  -- MSB在高位，LSB在低位
+                            
+                        when others =>
+                            null;
+                    end case;
+                end if;
             end if;
         end if;
     end process;
