@@ -22,18 +22,18 @@ end binary_bcd;
 architecture behaviour of binary_bcd is
     -- 状态机定义: start(开始), shift(移位), done(完成)
     type states is (start, shift, done);
-    signal state, state_next: states;
+    signal state, state_next: states := start;
 
     -- 信号定义
     -- binary: 内部寄存器，存储待转换的二进制数
-    signal binary, binary_next: std_logic_vector(N-1 downto 0);
+    signal binary, binary_next: std_logic_vector(N-1 downto 0) := (others => '0');
     -- bcds: 存放BCD码的寄存器 (5个4位BCD = 20位)
     -- bcds_reg: "加3"操作之前的中间BCD值
-    signal bcds, bcds_reg, bcds_next: std_logic_vector(19 downto 0);
+    signal bcds, bcds_reg, bcds_next: std_logic_vector(19 downto 0) := (others => '0');
     -- bcds_out_reg: 输出寄存器, 在转换过程中保持输出稳定
-    signal bcds_out_reg, bcds_out_reg_next: std_logic_vector(19 downto 0);
+    signal bcds_out_reg, bcds_out_reg_next: std_logic_vector(19 downto 0) := (others => '0');
     -- shift_counter: 移位计数器，记录移位次数
-    signal shift_counter, shift_counter_next: natural range 0 to N;
+    signal shift_counter, shift_counter_next: natural range 0 to N := 0;
 begin
 
     --================================================================================
