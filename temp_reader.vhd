@@ -63,10 +63,6 @@ architecture Behavioral of temp_reader is
     -- 内部寄存器
     signal temp_msb : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
     signal temp_lsb : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
-    
-    -- 用于检测 busy 下降沿
-    signal i2c_busy_prev : STD_LOGIC := '0';
-    signal busy_falling  : STD_LOGIC;
 
 begin
 
@@ -111,7 +107,7 @@ begin
             when st_busy_1 =>
                 busy <= '1';
                 i2c_ena <= '1';
-                i2c_rw <= '0';
+                i2c_rw <= '1';  -- 提前切换到读模式，以便 i2c_master 在 busy 变 0 时能检测到变化
                 i2c_data_wr <= TEMP_REG_ADDR;
 
             when st_busy_0_1 =>
@@ -143,7 +139,7 @@ begin
 
             when st_busy_3 =>
                 busy <= '1';
-                i2c_ena <= '1';
+                i2c_ena <= '0';  -- 禁用 ena，让 i2c_master 发送 NACK 并停止
                 i2c_rw <= '1';
 
             when st_busy_0_3 =>
@@ -182,7 +178,10 @@ begin
                 end if;
 
             when st_busy_0_1 =>
-                next_state <= read_temp_MSB;
+                -- 等待 busy 变回 '1'，表示 Repeated Start 和读操作已开始
+                if i2c_busy = '1' then
+                    next_state <= read_temp_MSB;
+                end if;
 
             when read_temp_MSB =>
                 if i2c_busy = '1' then
@@ -195,7 +194,10 @@ begin
                 end if;
 
             when st_busy_0_2 =>
-                next_state <= read_temp_LSB;
+                -- 等待 busy 变回 '1'，表示开始读取 LSB
+                if i2c_busy = '1' then
+                    next_state <= read_temp_LSB;
+                end if;
 
             when read_temp_LSB =>
                 if i2c_busy = '1' then
@@ -217,7 +219,7 @@ begin
     end process;
 
     -- ========================================================================
-    -- 进程4: 数据寄存器 - 在 busy 下降沿捕获数据
+    -- 进程4: 数据寄存器 - 在对应的 st_busy_0_X 状态捕获数据
     -- ========================================================================
     DATA_REG: process(clk)
     begin
@@ -226,27 +228,22 @@ begin
                 temp_msb <= (others => '0');
                 temp_lsb <= (others => '0');
                 data <= (others => '0');
-                i2c_busy_prev <= '0';
             else
-                -- 保存上一个时钟周期的 busy 状态
-                i2c_busy_prev <= i2c_busy;
-                
-                -- 检测 busy 下降沿（1->0）并根据当前状态捕获数据
-                if i2c_busy_prev = '1' and i2c_busy = '0' then
-                    case state is
-                        when st_busy_2 =>
-                            -- 第一次读操作完成，捕获 MSB
-                            temp_msb <= data_rd;
-                            
-                        when st_busy_3 =>
-                            -- 第二次读操作完成，捕获 LSB 并组合输出
-                            temp_lsb <= data_rd;
-                            data <= temp_msb & data_rd;  -- MSB在高位，LSB在低位
-                            
-                        when others =>
-                            null;
-                    end case;
-                end if;
+                -- 在状态机进入 st_busy_0_2 时捕获 MSB
+                -- 在状态机进入 st_busy_0_3 时捕获 LSB
+                case state is
+                    when st_busy_0_2 =>
+                        -- 第一次读操作完成（已等待busy变为0），捕获 MSB
+                        temp_msb <= data_rd;
+                        
+                    when st_busy_0_3 =>
+                        -- 第二次读操作完成，捕获 LSB 并组合输出
+                        temp_lsb <= data_rd;
+                        data <= temp_msb & data_rd;  -- MSB在高位，LSB在低位
+                        
+                    when others =>
+                        null;
+                end case;
             end if;
         end if;
     end process;
