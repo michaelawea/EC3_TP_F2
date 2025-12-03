@@ -28,8 +28,7 @@ entity temp_decoder is
         temp_data   : in  STD_LOGIC_VECTOR(15 downto 0);    -- 16位原始温度数据
         bcd_tens    : out STD_LOGIC_VECTOR(3 downto 0);     -- 十位度 BCD
         bcd_units   : out STD_LOGIC_VECTOR(3 downto 0);     -- 个位度 BCD
-        bcd_tenth   : out STD_LOGIC_VECTOR(3 downto 0);     -- 十分之一度 BCD
-        sign        : out STD_LOGIC                          -- 符号位：0=正，1=负
+        bcd_tenth   : out STD_LOGIC_VECTOR(3 downto 0)      -- 十分之一度 BCD
     );
 end temp_decoder;
 
@@ -77,9 +76,6 @@ begin
     -- ========================================================================
     -- 提取温度数据各部分
     -- ========================================================================
-    -- 符号位：D12 = temp_data(15)
-    sign <= temp_data(15);
-    
     -- 整数部分：D12-D4 = temp_data(15 downto 7)
     -- 注意：这里我们取绝对值用于显示，对于正温度直接使用
     temp_integer <= temp_data(15 downto 7);

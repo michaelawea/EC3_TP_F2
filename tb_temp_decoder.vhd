@@ -22,8 +22,7 @@ architecture Behavioral of tb_temp_decoder is
             temp_data   : in  STD_LOGIC_VECTOR(15 downto 0);
             bcd_tens    : out STD_LOGIC_VECTOR(3 downto 0);
             bcd_units   : out STD_LOGIC_VECTOR(3 downto 0);
-            bcd_tenth   : out STD_LOGIC_VECTOR(3 downto 0);
-            sign        : out STD_LOGIC
+            bcd_tenth   : out STD_LOGIC_VECTOR(3 downto 0)
         );
     end component;
 
@@ -36,7 +35,6 @@ architecture Behavioral of tb_temp_decoder is
     signal bcd_tens   : STD_LOGIC_VECTOR(3 downto 0);
     signal bcd_units  : STD_LOGIC_VECTOR(3 downto 0);
     signal bcd_tenth  : STD_LOGIC_VECTOR(3 downto 0);
-    signal sign       : STD_LOGIC;
 
     -- 时钟周期
     constant CLK_PERIOD : time := 10 ns;
@@ -53,8 +51,7 @@ begin
             temp_data => temp_data,
             bcd_tens  => bcd_tens,
             bcd_units => bcd_units,
-            bcd_tenth => bcd_tenth,
-            sign      => sign
+            bcd_tenth => bcd_tenth
         );
 
     -- ========================================================================
@@ -85,7 +82,7 @@ begin
         -- 分析：
         --   整数部分 (bits 15-7): 0 0001 1001 = 25
         --   小数部分 (bits 6-3):  0001 = 0.0625 ≈ 0.1
-        -- 期望输出：tens=2, units=5, tenth=1, sign=0
+        -- 期望输出：tens=2, units=5, tenth=1
         -- ====================================================================
         temp_data <= "0000110010001000";  -- 0x0C88
         wait for CLK_PERIOD * 50;  -- 等待 binary_bcd 转换完成
@@ -94,7 +91,7 @@ begin
         -- 测试2：20.5°C
         -- 整数部分：20 = 0001 0100
         -- 小数部分：0.5 = 1000 (8 * 0.0625)
-        -- 期望输出：tens=2, units=0, tenth=5, sign=0
+        -- 期望输出：tens=2, units=0, tenth=5
         -- ====================================================================
         temp_data <= "0000101001000000";  -- 20.5°C
         wait for CLK_PERIOD * 50;
@@ -103,14 +100,14 @@ begin
         -- 测试3：30.0°C
         -- 整数部分：30 = 0001 1110
         -- 小数部分：0.0 = 0000
-        -- 期望输出：tens=3, units=0, tenth=0, sign=0
+        -- 期望输出：tens=3, units=0, tenth=0
         -- ====================================================================
         temp_data <= "0000111100000000";  -- 30.0°C
         wait for CLK_PERIOD * 50;
 
         -- ====================================================================
         -- 测试4：0.5°C
-        -- 期望输出：tens=0, units=0, tenth=5, sign=0
+        -- 期望输出：tens=0, units=0, tenth=5
         -- ====================================================================
         temp_data <= "0000000001000000";  -- 0.5°C
         wait for CLK_PERIOD * 50;
